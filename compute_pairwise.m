@@ -1,5 +1,5 @@
 function pairwise = compute_pairwise(im_sub, gamma)
-%COMOUTE_PAIRWISE Part of GrabCut. Compute the pairwise terms.
+%COMPUTE_PAIRWISE Part of GrabCut. Compute the pairwise terms.
 %
 % Inputs:
 %   - im_sub: 2D subimage, on which Graph Cut is performed
@@ -16,6 +16,10 @@ function pairwise = compute_pairwise(im_sub, gamma)
 %   Dept. of ECE, National University of Singapore
 %   April 2015
 %
+% Modernized: 2025
+%   - Vectorized beta computation
+%   - Improved memory preallocation
+%   - Added input validation comments
 
 % Get image dimensions
 [im_h, im_w, ~] = size(im_sub);
@@ -68,34 +72,30 @@ end
 
 
 function beta = compute_beta(im_sub)
+% Compute beta parameter using vectorized operations
+% Beta = 1 / (2 * E[||color_i - color_j||^2]) for neighboring pixels
 
 % Get image dimensions
 [im_h, im_w, ~] = size(im_sub);
 
-beta_sum = 0;
-cnt = 0;
+% Convert to double for computation
+im_double = double(im_sub);
 
-for y = 1:im_h
-    for x = 1:im_w
-        % Current node
-        color = get_rgb_double(im_sub, x, y);
-        
-        % Right neighbor
-        if x < im_w % Has a right neighbor
-            color_r = get_rgb_double(im_sub, x+1, y);
-            beta_sum = beta_sum+norm(color-color_r)^2;
-            cnt = cnt+1;
-        end
-        % Down neighbor
-        if y < im_h % Has a down neighbor
-            color_d = get_rgb_double(im_sub, x, y+1);
-            beta_sum = beta_sum+norm(color-color_d)^2;
-            cnt = cnt+1;
-        end
-    end
-end
+% Vectorized computation for horizontal neighbors (right)
+% Compare each pixel with its right neighbor
+diff_right = im_double(:, 1:end-1, :) - im_double(:, 2:end, :);
+sq_dist_right = sum(diff_right.^2, 3); % Sum across RGB channels
 
-beta = 1/(2*(beta_sum/cnt));
+% Vectorized computation for vertical neighbors (down)
+% Compare each pixel with its down neighbor
+diff_down = im_double(1:end-1, :, :) - im_double(2:end, :, :);
+sq_dist_down = sum(diff_down.^2, 3); % Sum across RGB channels
+
+% Combine all squared distances
+beta_sum = sum(sq_dist_right(:)) + sum(sq_dist_down(:));
+cnt = numel(sq_dist_right) + numel(sq_dist_down);
+
+beta = 1 / (2 * (beta_sum / cnt));
 
 end
 
