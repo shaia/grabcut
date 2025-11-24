@@ -79,15 +79,12 @@ while ~isConverged
     E_prev = E;
     
     %------- Display current result
-    
-    im_out = im_in;
+
     im_out_1d = im_1d;
     % Set background to white
     im_out_1d(pix_B, :) = 255;
-    % Assemble the 1D image back into 2D
-    for idx = 1:size(im_out, 2)
-        im_out(:, idx, :) = im_out_1d((idx-1)*im_h+1:idx*im_h, :);
-    end
+    % Assemble the 1D image back into 2D using reshape
+    im_out = reshape(im_out_1d, im_h, [], 3);
     imshow(im_out);
     drawnow;
     
