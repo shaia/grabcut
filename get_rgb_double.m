@@ -1,6 +1,10 @@
 function rgb = get_rgb_double(im, x, y)
 %GET_RGB_DOUBLE Part of GrabCut. Obtain a RGB tuple in double
 %
+% NOTE: This function is kept for backward compatibility but is inefficient
+% when called in loops. Consider using vectorized operations with squeeze()
+% or reshape() instead.
+%
 % Inputs:
 %   - im: 2D image
 %   - x: horizontal position
@@ -15,9 +19,9 @@ function rgb = get_rgb_double(im, x, y)
 %   Dept. of ECE, National University of Singapore
 %   April 2015
 %
+% Modernized: 2025
+%   - Added deprecation warning
+%   - Simplified implementation using squeeze
 
-r = im(y, x, 1);
-g = im(y, x, 2);
-b = im(y, x, 3);
-
-rgb = double([r g b]);
+% Extract RGB values and convert to double in one operation
+rgb = double(squeeze(im(y, x, :))');
