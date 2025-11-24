@@ -38,11 +38,7 @@ alpha_2d(ymin:ymax, xmin:xmax) = 1;
 
 im_sub = im_in(ymin:ymax, xmin:xmax, :);
 
-% Serialize the 2D image into 1D
-
-im_1d = zeros(no_nodes, 3);
-alpha = zeros(no_nodes, 1);
-for idx = 1:size(im_in, 2)
-    im_1d((idx-1)*im_h+1:idx*im_h, :) = im_in(:, idx, :);
-    alpha((idx-1)*im_h+1:idx*im_h) = alpha_2d(:, idx);
-end
+% Serialize the 2D image into 1D using column-major reshape
+% MATLAB stores arrays in column-major order, so reshape is efficient
+im_1d = reshape(im_in, no_nodes, 3);
+alpha = reshape(alpha_2d, no_nodes, 1);
