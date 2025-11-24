@@ -1,0 +1,70 @@
+# MATLAB
+*.asv
+*.m~
+*.mex*
+*.autosave
+
+# Compiled MEX files (platform-specific)
+bin_graphcuts/bin/
+
+# MATLAB session files
+*.mat
+octave-workspace
+
+# Build directories
+build/
+dist/
+
+# Results and output
+results/*.png
+results/*.jpg
+results/*_out.*
+!results/test*.jpg
+!results/test*.png
+
+# Test outputs
+tests/*.png
+tests/*.jpg
+tests/*.mat
+!tests/test*.jpg
+!tests/test*.png
+
+# Temporary files
+*.tmp
+*.temp
+~*
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*~
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python (if you add Python version later)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Logs
+*.log
+
+# Documentation build
+docs/_build/
+docs/.doctrees/

@@ -1,79 +1,129 @@
 function [pix_U_new, E] = cut_Tu(pix_U, im_sub, alpha, gmm_U, gmm_B, pairwise)
-%CUT_TU Part of GrabCut. Relabel with Graph Cut the pixels in T_U as
-%either still T_U (1) or T_B (0)
+%CUT_TU Relabel pixels using graph cut optimization
+%
+% Uses MATLAB's built-in maxflow function (R2015b+) for min-cut optimization.
 %
 % Inputs:
-%   - pix_U: logical indices for forground
-%   - im_sub: 2D subimage, on which Graph Cut is performed
-%   - alpha: initial foreground indices
-%   - gmm_U: parameters of the T_U GMM
-%   - gmm_B: parameters of the T_B GMM
-%   - pairwise: pairwise term computed beforehand
+%   - pix_U: Logical indices for foreground
+%   - im_sub: HxWx3 RGB image
+%   - alpha: Initial foreground indices
+%   - gmm_U: Foreground GMM (struct array with fields: pi, mu, sigma)
+%   - gmm_B: Background GMM (struct array with fields: pi, mu, sigma)
+%   - pairwise: Pairwise terms (no_edges × 6 matrix)
 %
 % Output:
-%   - pix_U: IDs of pixels who are still in T_U after Graph Cut
-%   - E: energy after Graph Cut
+%   - pix_U_new: Updated logical indices for foreground
+%   - E: Total energy after graph cut
 %
 % Author:
-%   Xiuming Zhang
-%   GitHub: xiumingzhang
-%   Dept. of ECE, National University of Singapore
-%   April 2015
-%
+%   Xiuming Zhang (Original, 2015)
+%   Modernized: 2025
+%   - Replaced MEX with built-in maxflow
+%   - Vectorized computations
+%   - Refactored into clear sub-functions
 
-% Get image dimensions
-[im_h, im_w, ~] = size(im_sub);
-% Compute #. nodes (pixels)
-no_nodes = im_h*im_w;
-
-%------------------- Compute MRF edge values
-
-unary = zeros(2, no_nodes);
-
-% Loop through all the pixels (nodes) and set pairwise and label_costs 
-fprintf('Computing unary terms...\n');
-for y = 1:im_h
-    fprintf('%d/%d ', y, im_h);
-    for x = 1:im_w
-        % Current node
-        color = get_rgb_double(im_sub, x, y);
-        node = (x-1)*im_h+y;
-        
-        %------ Compute data term
-        % 1 for foreground
-        % 2 for backround
-        unary(1, node) = compute_unary(color, gmm_U);
-        unary(2, node) = compute_unary(color, gmm_B);
-    end
+arguments
+    pix_U (:,1) logical
+    im_sub (:,:,3) {mustBeNumeric}
+    alpha (:,1) {mustBeNumeric}
+    gmm_U struct
+    gmm_B struct
+    pairwise (:,6) double {mustBeReal}
 end
 
-%------------------- Create MRF
+% Setup
+[im_h, im_w, ~] = size(im_sub);
+no_nodes = im_h * im_w;
 
-mrf = BK_Create(no_nodes);
-% Nodes are arranged in 1-D, following this order
-% (1, 1), (2, 1), ..., (573, 1), (1, 2), (2, 2), ...
+% Step 1: Compute unary terms (data costs)
+fprintf('Computing unary terms...\n');
+unary = compute_unary_terms(im_sub, no_nodes, gmm_U, gmm_B);
+fprintf('Unary terms computed\n');
 
-%------------------- Set unary
+% Step 2: Build graph and run maxflow
+fprintf('Building graph structure...\n');
+[gc_labels, elapsed] = solve_graph_cut(unary, pairwise, no_nodes);
+fprintf('Maxflow completed in %.2f seconds\n', elapsed);
 
-BK_SetUnary(mrf, unary);
+% Step 3: Compute energy
+E = compute_energy(unary, pairwise, gc_labels);
+fprintf('Total energy: %.2f\n', E);
 
-%------------------- Set pairwise
+% Step 4: Update labels
+pix_U_new = update_labels(pix_U, alpha, gc_labels);
 
-BK_SetPairwise(mrf, pairwise);
+end
 
-%------------------- Graphcuts
 
-E = BK_Minimize(mrf);
-gc_labels = BK_GetLabeling(mrf);
+%% Private Helper Functions
 
-BK_Delete(mrf);
+function unary = compute_unary_terms(im_sub, no_nodes, gmm_U, gmm_B)
+%COMPUTE_UNARY_TERMS Compute data terms for all pixels
 
-%------------------- Kick out T_B pixels from T_U
+im_1d = reshape(double(im_sub), no_nodes, 3);
+
+% Compute for both foreground and background
+unary = zeros(2, no_nodes);
+unary(1, :) = compute_unary_batch(im_1d, gmm_U);
+unary(2, :) = compute_unary_batch(im_1d, gmm_B);
+
+end
+
+
+function [gc_labels, elapsed] = solve_graph_cut(unary, pairwise, no_nodes)
+%SOLVE_GRAPH_CUT Build graph and solve min-cut problem
+
+% Setup graph nodes
+source_id = no_nodes + 1;
+sink_id = no_nodes + 2;
+total_nodes = no_nodes + 2;
+
+% Build capacity matrix
+C = build_capacity_matrix(unary, pairwise, no_nodes, source_id, sink_id, total_nodes);
+
+% Create digraph and solve
+G = digraph(C);
+fprintf('Graph: %d nodes, %d edges\n', numnodes(G), numedges(G));
+
+% Run maxflow
+tic;
+[~, ~, cs, ~] = maxflow(G, source_id, sink_id);
+elapsed = toc;
+
+% Extract labels (1=foreground, 2=background)
+gc_labels = 2 * ones(no_nodes, 1);
+gc_labels(cs(cs <= no_nodes)) = 1;
+
+end
+
+
+function C = build_capacity_matrix(unary, pairwise, no_nodes, source_id, sink_id, total_nodes)
+%BUILD_CAPACITY_MATRIX Construct sparse capacity matrix for graph
+
+C = sparse(total_nodes, total_nodes);
+
+% Add terminal edges (source/sink connections)
+pixel_nodes = 1:no_nodes;
+C(source_id, pixel_nodes) = unary(1, pixel_nodes);  % Source to pixels
+C(pixel_nodes, sink_id) = unary(2, pixel_nodes);    % Pixels to sink
+
+% Add pairwise edges (neighbor connections)
+num_edges = size(pairwise, 1);
+for e = 1:num_edges
+    i = pairwise(e, 1);
+    j = pairwise(e, 2);
+    C(i, j) = pairwise(e, 4);  % i=foreground, j=background
+    C(j, i) = pairwise(e, 5);  % i=background, j=foreground
+end
+
+end
+
+
+function pix_U_new = update_labels(pix_U, alpha, gc_labels)
+%UPDATE_LABELS Update pixel labels based on graph cut result
 
 pix_U_new = pix_U;
+alpha(alpha == 1) = gc_labels;
+pix_U_new(alpha == 2) = 0;
 
-% Replace initial labels with Graph Cut labels
-alpha(alpha==1) = gc_labels;
-
-% Remove background pixels from T_U
-pix_U_new(alpha==2) = 0;
+end
